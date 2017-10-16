@@ -1,0 +1,214 @@
+---
+title: "Reproducible Research Project 2"
+author: "Meredith Crocker"
+date: "10/15/2017"
+output:
+  html_document: default
+  pdf_document: default
+  md_document: varient:markdown_github
+  
+---
+
+
+github repo: [Data Science Coursera](https://github.com/merricrocker/datasciencecoursera)
+
+# Reproducible Research - Analysis of the Adverse Health and Economic Impacts of US Storms
+
+## 1: Synopsis
+
+### The goal of the assignment is to use the NOAA Storm Database to explore the effects of severe weather events on both population and economy.The database covers the time period between 1950 and November 2011. 
+
+The following analysis investigates which types of severe weather events are most harmful on:
+
+    Health (injuries and fatalities)
+    Property and crops (economic consequences)
+    
+From the data, it was found that excessive heat and tornado are most harmful with respect to population health, while flood, drought, and hurricane/typhoon have the greatest economic consequences.
+ 
+ ## Basic Settings
+
+ ``` echo = TRUE  # Always make code visible
+options(scipen = 1)  # Turn off scientific notations for numbers
+library(ggplot2)
+library(plyr)
+library(knitr)
+library(markdown)
+library(stats)
+```
+
+## Data Processing
+###Download Data file and unzip
+
+```setwd("~/Users/meredithcrocker/datasciencecoursera")
+
+stormdata <- read.csv("/Users/meredithcrocker/datasciencecoursera/repdata_data_StormData.csv")
+```
+
+Examine Data
+```colnames(stormdata)
+dim(stormdata)
+```
+###There are 902297 rows and 37 columns in total. The database starts in 1950 and ends in November 2011. The data recorded in earlier years is less comprehesive than later years. Most likely due to poor record keeping, lost data, or unknown event. Recent years should be considered better.
+```
+
+##Subset Data
+
+### Define Variables
+        EVTYPE:Event Type (Tornados, Flood,...)
+        FATALITIES: Number of fatalities
+        INJURIES: Number of injuries
+        PROPDMG: Property damage
+        PROPDMGEXP: Units for property damage (magnitudes-K,B,M)
+        CROPDMG: Crop damage
+        CROPDMGEXP: Units for crop damage (magnitudes-K,B,M,B)
+        REFNUM: Event reference number
+### Subset the dataset for parameters of interest. Remove unecessary columns for clarity.
+
+``` varNeed <-c("EVTYPE","FATALITIES","INJURIES","PROPDMG","PROPDMGEXP","CROPDMG","CROPDMGEXP","LATITUDE","LONGITUDE","REFNUM")
+
+stormdata<-stormdata[varNeed]
+```
+### Now we can look at the data to see if it needs any changes
+
+```dim(stormdata)
+names(stormdata)
+str(stormdata)
+```
+### We see EVTYPE, PROPDMGEXP, and CROPDMGEXP are shown as a character variables, but these variables can only take certain values, so we will need to change these to factor variables. We also know that PROPDMGEXP and CROPDMGEXP are ordered with ???K??? < ???M??? < ???B??? since the values are codes that represent thousands, millions, and billions of dollars respectively. Additionally, with the first few observations we see CROPDMGEXP is null when CROPDMG is zero. The same is true for PROPDMGEXP when PROPDMG is zero. To remove the nulls we???ll replace any missing values with of CROPDMGEXP or PROPDMGEXP with a ???K??? when their respective dollar amounts is zero. The numeric variables are okay.
+
+###Change EVTYPE to a factor variable
+
+```stormdata$EVTYPE <- factor(stormdata$EVTYPE)
+```
+### Replace the null PROPDMGEXP and CROPDMGEXP with "K" when their respective dollar amounts is zero
+
+```
+stormdata[stormdata$PROPDMG ==  0,]$PROPDMGEXP <- "K"
+stormdata[stormdata$CROPDMG ==  0,]$CROPDMGEXP <- "K"
+```
+
+### Change PROPDMGEXP and CROPDMGEXP to ordered factor variables
+```
+stormdata$PROPDMGEXP <- factor(stormdata$PROPDMGEXP, levels = c("K","M","B"))
+stormdata$CROPDMGEXP <- factor(stormdata$CROPDMGEXP, levels = c("K","M","B"))
+```
+
+### View
+```
+str(stormdata)
+```
+
+### We can see that EVTYPE is not clean, and while a thorough clean would be desirable it is not necessary, and too time consuming for this particular analysis. But a quick clean can limit the numbers by adjusting the case. 
+
+``` stormdata <- mutate(stormdata, EVTYPE.fix = toupper(EVTYPE))
+```
+### fix string w/o leading or trailing whitespace
+```
+trim <- function (x) gsub("^\\s+|\\s+$", "", x)
+stormdata$EVTYPE.fix <- trim(stormdata$EVTYPE.fix)
+```
+###factor variable again
+```
+stormdata$EVTYPE.fix <- factor(stormdata$EVTYPE.fix)
+```
+###Obviously not the best but has helped somewhat. At least to examine the data a bit more easily as will the next step. We will ensure dollar amounts in same units: two new variables that take the values of PROPDMG and CROPDMG and applies their magnitude from PROPDMGEXP and CROPDMGEXP. We will also create a full economic impact variable by taking the sum of our new property and crop damage variables.
+
+###New Variables for dollar amounts
+```
+stormdata <- mutate(stormdata,PROPDMG.fix = ifelse(PROPDMGEXP == "B", PROPDMG * 10^9, ifelse(PROPDMGEXP == "M", PROPDMG * 10^6, PROPDMG * 10^3)),CROPDMG.fix = ifelse(CROPDMGEXP == "B", CROPDMG * 10^9, ifelse(
+CROPDMGEXP == "M", CROPDMG * 10^6, CROPDMG * 10^3)),econ.impact = PROPDMG.fix + CROPDMG.fix)
+```
+
+###Check Data
+```summary(stormdata)
+```
+###See some null values so need to create unique values before analysis
+  ####PROPDMGEXP
+  ```unique(stormdata$PROPDMGEXP)
+  unique(stormdata$CROPDMGEXP)
+  stormdata<- stormdata[complete.cases(stormdata),]
+  ```
+  
+  #Results
+  ## Impact on Public Health
+  ### Need to define which events are most harmful
+  
+ ####Total Fatalities 
+ ```
+ sumFatalities<-aggregate(FATALITIES ~ EVTYPE, data = stormdata, FUN="sum")
+ dim(sumFatalities)
+ ```
+ #### Order top 10 events
+ ```fatalities10<-sumFatalities[order(-sumFatalities$FATALITIES), ][1:10,]
+ dim(fatalities10)
+ fatalities10
+ ```
+ ###Barplot
+ ```par(mfrow = c(1,1), mar = c(12,4,3,2), mgp = c(3,1,0), cex = 0.8)
+ barplot(fatalities10$FATALITIES, names.arg = fatalities10$EVTYPE, las = 3, main = " Top Ten Fatal Events")
+ ```
+ ### PNG and PDF
+ ```dev.copy(png,"Fatality events.png", width =480, height = 480)
+ ```
+  ####Total Injuries
+  
+  sumInjuries<-aggregate(INJURIES ~ EVTYPE, data = stormdata, FUN="sum")
+ dim(sumInjuries)
+ ```
+ #### Order top 10 events
+ ```injuries10<-sumInjuries[order(-sumInjuries$INJURIES), ][1:10,]
+ injuries10
+ ```
+ ###Barplot
+ ```par(mfrow = c(1,1), mar = c(12,4,3,2), mgp = c(3,1,0), cex = 0.8)
+ barplot(injuries10$INJURIES, names.arg = injuries10$EVTYPE, las = 3, main = " Top Ten Injury Events")
+ ```
+ ### PNG and PDF
+ ```dev.copy(png,"Injury events.png", width =480, height = 480)
+ dev.off()
+ ```
+ ## Economic Impact
+ ### Property damage for type of event
+ 
+ ```sumPropertyDamage<-aggregate(PROPDMG ~ EVTYPE, data = stormdata, FUN = "sum")
+ dim(sumPropertyDamage)
+ ```
+ ###Take the top ten
+ prop10<-sumPropertyDamage[order(-sumPropertyDamage$PROPDMG), ][1:10, ]
+ prop10
+ ```
+ 
+ ### Barplot
+ ```
+ par(mfrow = c(1,1), mar = c(12,4,3,2), mgp = c(3,1,0), cex = 0.8)
+ barplot(prop10$PROPDMG, names.arg = prop10$EVTYPE, las = 3, main = " Top Ten Property Damage Events")
+ ```
+ ### PNG and PDF
+ ```dev.copy(png,"Property Damage Events.png", width =480, height = 480)
+ dev.off()
+ ```
+ ### Crop damage for type of event
+ 
+ ```sumCropDamage<-aggregate(CROPDMG ~ EVTYPE, data = stormdata, FUN = "sum")
+ dim(sumCropDamage)
+ ```
+ ###Take the top ten
+ crop10<-sumCropDamage[order(-sumCropDamage$CROPDMG), ][1:10, ]
+ crop10
+ ```
+ 
+ ### Barplot
+ ```
+ par(mfrow = c(1,1), mar = c(12,4,3,2), mgp = c(3,1,0), cex = 0.8)
+ barplot(crop10$CROPDMG, names.arg = crop10$EVTYPE, las = 3, main = " Top Ten Crop Damage Events")
+ ```
+ ### PNG and PDF
+ ```dev.copy(png,"Crop Damage Events.png", width =480, height = 480)
+ dev.off()
+ ```
+ 
+ ##Conclusions
+ ### Tornadoes cause the greatest numbers of fatalities and injuries- followed by excess heat, and flash floods.
+ ### Flood caused the most property damage followed by hurricanes.
+ ### The data here as well as recent events prove that something seriously needs to be done about securing people against damage from tornadoes, hurricanes and floodiing. Obviously the infrastructure in place is not doing enough, moreover people should probably not build in areas prone to such events. 
+ 
